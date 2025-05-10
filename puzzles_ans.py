@@ -924,6 +924,44 @@ def quant_dot_kernel(
 
     return
 
+def inverse_spec(x: Float32[1024, 1024]) -> Float32[1024, 1024]:
+    lower_tri = torch.tril(x, diagonal=0)
+    return torch.inverse(lower_tri)
+
+@triton.jit
+def inverse_kernel(x_ptr, z_ptr, N0, N1, B0: tl.constexpr, B1: tl.constexpr):
+    # B0=1，每一个block仅一个thread(我也不想这样，i'm too vergetable)
+    id_j = tl.program_id(0)
+    off_j = id_j * B0 + tl.arange(0, B0) 
+    mask_j = off_j < N0
+
+    # 对角线
+    off_x = id_j * N0 + off_j
+    mask_x = off_x < N0 * N0   
+    x_jj = tl.load(x_ptr + off_x) 
+    x_jj_inv = 1 / x_jj
+    tl.store(z_ptr + off_x, x_jj_inv)
+
+    # 其他元素
+    for id_i in tl.range(id_j * B0 + 1, N1):
+        sum = 0.0
+        for id_k in tl.range(id_j, id_i, B1):
+            off_k = id_i * N0 + id_j + tl.arange(0, B1)
+            mask_k = off_k < id_i * N0 + id_j + id_i - id_j 
+            x_k = tl.load(x_ptr + off_k, mask=mask_k)
+
+            off_z = tl.arange(0, B1) * N0 + id_j * B0 * N0  + id_j 
+            mask_z = off_z < (id_j * B0 * N0  + id_j) + (id_i - id_j) * N0
+            z_k = tl.load(z_ptr + off_z, mask=mask_z)
+
+            sum += (x_k * z_k).sum()
+        
+        off_z = id_i * N0 + id_j + tl.arange(0, B0)
+        off_ii = id_i * N0 + id_i 
+        x_ii = tl.load(x_ptr + off_ii)
+        value = -sum/x_ii
+        tl.store(z_ptr + off_z, value)
+    return
 
 def run_demos():
     run_demo1()
@@ -1080,6 +1118,19 @@ def run_puzzles(args, puzzles: List[int]):
             quant_dot_spec,
             B={"B0": 16, "B1": 16, "B_MID": 64},
             nelem={"N0": 32, "N1": 32, "MID": 64},
+            print_log=print_log,
+            device=device,
+        )
+        print_end_line()
+        if not ok:
+            return
+    if 13 in puzzles:
+        print("Puzzle #13:")
+        ok = test(
+            inverse_kernel,
+            inverse_spec,
+            B={"B0": 1, "B1": 32},
+            nelem={"N0": 1024, "N1": 1024},
             print_log=print_log,
             device=device,
         )
