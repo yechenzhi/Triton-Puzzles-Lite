@@ -946,15 +946,15 @@ def inverse_kernel(x_ptr, z_ptr, N0, N1, B0: tl.constexpr, B1: tl.constexpr):
     for id_i in tl.range(id_j * B0 + 1, N1):
         sum = 0.0
         for id_k in tl.range(id_j, id_i, B1):
-            off_k = id_i * N0 + id_j + tl.arange(0, B1)
+            off_k = id_i * N0 + id_k + tl.arange(0, B1)
             mask_k = off_k < id_i * N0 + id_j + id_i - id_j 
             x_k = tl.load(x_ptr + off_k, mask=mask_k)
-
-            off_z = tl.arange(0, B1) * N0 + id_j * B0 * N0  + id_j 
+            
+            off_z = tl.arange(0, B1) * N0 + id_k * B0 * N0  + id_j 
             mask_z = off_z < (id_j * B0 * N0  + id_j) + (id_i - id_j) * N0
             z_k = tl.load(z_ptr + off_z, mask=mask_z)
-
-            sum += (x_k * z_k).sum()
+            # import pdb; pdb.set_trace()
+            sum += tl.sum(x_k * z_k, axis=0)
         
         off_z = id_i * N0 + id_j + tl.arange(0, B0)
         off_ii = id_i * N0 + id_i 
