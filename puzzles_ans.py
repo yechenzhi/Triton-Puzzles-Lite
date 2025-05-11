@@ -935,6 +935,13 @@ def inverse_kernel(x_ptr, z_ptr, N0, N1, B0: tl.constexpr, B1: tl.constexpr):
     off_j = id_j * B0 + tl.arange(0, B0) 
     mask_j = off_j < N0
 
+   # 对整列的z初始化为0
+    for id_i in tl.range(0, N0, B1):
+        off_i = (id_i + tl.arange(0, B1)) * N1 +  id_j
+        mask_i = off_i < N1 * N1 
+        z_zeros = tl.zeros((B1,), dtype=tl.float32)
+        tl.store(z_ptr + off_i, z_zeros, mask=mask_i)
+
     # 对角线
     off_x = id_j * N0 + off_j
     mask_x = off_x < N0 * N0   
